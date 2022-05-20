@@ -1,0 +1,25 @@
+indexes:
+  - kind: barters
+    properties:
+      - name: chainId
+      - name: dateCreated
+        direction: desc
+  - kind: barters
+    properties:
+      - name: chainId
+      - name: depositTokenContract
+      - name: expectedTokenContract
+      - name: dateCreated
+        direction: desc
+  - kind: barters
+    properties:
+      - name: chainId
+      - name: depositTokenContract
+      - name: dateCreated
+        direction: desc
+  - kind: barters
+    properties:
+      - name: chainId
+      - name: expectedTokenContract
+      - name: dateCreated
+        direction: desc
