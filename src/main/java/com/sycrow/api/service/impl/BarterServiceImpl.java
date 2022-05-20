@@ -128,7 +128,7 @@ public class BarterServiceImpl implements BarterService {
                             this.processBarterCreationEvent(chainId, eventResponse);
                         }
                     }));
-        } catch (Exception e) {
+        } catch (Throwable e) {
             log.error(e);
         }
         platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_B_S_.getNameForChain(chainId), latestBlockScanned.get());
@@ -155,7 +155,7 @@ public class BarterServiceImpl implements BarterService {
                         latestBlockScanned.set(block);
                         this.processBarterTradeEvent(chainId, eventResponse);
                     }));
-        } catch (Exception e) {
+        } catch (Throwable e) {
             log.error(e);
         }
         platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_TRADE_L_B_S.getNameForChain(chainId), latestBlockScanned.get());
@@ -182,7 +182,7 @@ public class BarterServiceImpl implements BarterService {
                         latestBlockScanned.set(block);
                         this.processBarterWithdrawalEvent(chainId, eventResponse);
                     }));
-        } catch (Exception e) {
+        } catch (Throwable e) {
             log.error(e);
         }
         platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_WITHDRAWAL_L_B_S.getNameForChain(chainId), latestBlockScanned.get());
@@ -219,7 +219,7 @@ public class BarterServiceImpl implements BarterService {
 
         Web3j web3 = Web3j.build(new HttpService(environment.getProperty(String.format("%s%s", NETWORK_URL_ENV_KEY, chainId))));
 
-        String secretKeyName = environment.getProperty(ADMIN_PRIVATE_KEY_VERSION_ENV_KEY);
+        String secretKeyName = environment.getProperty(ADMIN_PRIVATE_KEY_NAME_ENV_KEY);
         String secretKeyVersion = environment.getProperty(ADMIN_PRIVATE_KEY_VERSION_ENV_KEY);
 
         Credentials credentials = Credentials.create(platformAttributeHelper.getSecretValue(secretKeyName, secretKeyVersion).orElseThrow(() -> new SecretValueNotFoundException(secretKeyName + ":" + secretKeyVersion)));

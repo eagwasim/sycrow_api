@@ -21,7 +21,11 @@ public class CronController {
         if (userAgent == null || !userAgent.equalsIgnoreCase("Google-Cloud-Scheduler")) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("lol");
         }
-        barterService.processBarterCreationEvents(chainId);
+        try {
+            barterService.processBarterCreationEvents(chainId);
+        } catch (Throwable t) {
+            log.error(t);
+        }
         return ResponseEntity.ok("completed");
     }
 
@@ -30,9 +34,11 @@ public class CronController {
         if (userAgent == null || !userAgent.equalsIgnoreCase("Google-Cloud-Scheduler")) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("lol");
         }
-
-        barterService.processBarterWithdrawalEvents(chainId);
-
+        try {
+            barterService.processBarterWithdrawalEvents(chainId);
+        } catch (Throwable t) {
+            log.error(t);
+        }
         return ResponseEntity.ok("completed");
     }
 }

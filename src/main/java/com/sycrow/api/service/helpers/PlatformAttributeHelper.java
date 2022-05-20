@@ -9,22 +9,27 @@ import com.google.cloud.secretmanager.v1.SecretManagerServiceSettings;
 import com.google.cloud.secretmanager.v1.SecretVersionName;
 import com.sycrow.api.model.PlatformAttributeEntity;
 import com.sycrow.api.repository.PlatformAttributeEntityRepository;
+import lombok.extern.log4j.Log4j2;
 import org.springframework.core.env.Environment;
-import org.springframework.util.ResourceUtils;
+import org.springframework.core.io.ResourceLoader;
 
 import javax.inject.Named;
-import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 import java.util.Optional;
 
+@Log4j2
 @Named
 public class PlatformAttributeHelper {
     private final PlatformAttributeEntityRepository platformAttributeEntityRepository;
+    private final ResourceLoader resourceLoader;
     private final Environment environment;
 
-    public PlatformAttributeHelper(PlatformAttributeEntityRepository platformAttributeEntityRepository, Environment environment) {
+    public PlatformAttributeHelper(PlatformAttributeEntityRepository platformAttributeEntityRepository, ResourceLoader resourceLoader, Environment environment) {
         this.platformAttributeEntityRepository = platformAttributeEntityRepository;
+        this.resourceLoader = resourceLoader;
         this.environment = environment;
     }
 
@@ -44,15 +49,21 @@ public class PlatformAttributeHelper {
         SecretManagerServiceClient client = null;
         InputStream credentialsStream = null;
         try {
-            credentialsStream = new FileInputStream(ResourceUtils.getFile("classpath:credentials/sycrow-api-13a13153712a.json"));
+            credentialsStream = Objects.requireNonNull(resourceLoader.getClassLoader()).getResourceAsStream("credentials/sycrow-api-gcp-credentials.json");
+            if (credentialsStream == null) {
+                throw new FileNotFoundException("credentials/sycrow-api-gcp-credentials.json");
+            }
+
             GoogleCredentials credentials = ServiceAccountCredentials.fromStream(credentialsStream);
             SecretManagerServiceSettings secretManagerServiceSettings =
                     SecretManagerServiceSettings.newBuilder()
                             .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
                             .build();
+
+            String secretVersionName = String.format("projects/%s/secrets/%s/versions/%s", environment.getProperty("spring.cloud.gcp.project-number"), name, version);
+
             client = SecretManagerServiceClient.create(secretManagerServiceSettings);
-            SecretVersionName secretVersionName = SecretVersionName.of(environment.getProperty("spring.cloud.gcp.project-id"), name, version);
-            AccessSecretVersionResponse response = client.accessSecretVersion(name);
+            AccessSecretVersionResponse response = client.accessSecretVersion(secretVersionName);
             return Optional.of(response.getPayload().getData().toStringUtf8());
         } catch (IOException e) {
             e.printStackTrace();
