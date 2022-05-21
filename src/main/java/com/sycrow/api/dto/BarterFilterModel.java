@@ -10,6 +10,6 @@ public class BarterFilterModel {
     private String expectsTokenAddress;
     private String depositedTokenAddress;
 
-    private int start;
+    private int page;
     private int limit;
 }

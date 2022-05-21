@@ -6,5 +6,5 @@ import lombok.Data;
 @Data
 @Builder
 public class BarterModel {
-    private String contractAddress;
+    private String address;
 }

@@ -9,5 +9,5 @@ import java.util.List;
 @Builder
 public class BarterSearchResponseModel {
     private List<BarterModel> barters;
-    private Long totalCount;
+    private Boolean hasMore;
 }

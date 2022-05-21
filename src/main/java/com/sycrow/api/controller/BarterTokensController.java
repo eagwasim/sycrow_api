@@ -25,7 +25,7 @@ public class BarterTokensController {
     @GetMapping("/{chainId}")
     public ResponseEntity<?> getBarters(
             @PathVariable("chainId") String chainId,
-            @RequestParam("start") @Min(0) int start,
+            @RequestParam("page") @Min(0) int page,
             @RequestParam("limit") @Max(100) @Min(10) int limit,
             @RequestParam("depositTokenContract") @Nullable String depositTokenContract,
             @RequestParam("expectsTokenContract") @Nullable String expectsTokenContract
@@ -34,7 +34,7 @@ public class BarterTokensController {
                 .depositedTokenAddress(depositTokenContract)
                 .expectsTokenAddress(expectsTokenContract)
                 .limit(limit)
-                .start(start)
+                .page(page)
                 .build());
 
         return ResponseEntity.ok(BaseResponse.builder().data(barterSearchResponseModel).build());

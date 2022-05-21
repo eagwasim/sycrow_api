@@ -17,6 +17,7 @@ import lombok.extern.log4j.Log4j2;
 import org.springframework.core.env.Environment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.Sort;
 import org.web3j.abi.EventEncoder;
 import org.web3j.crypto.Credentials;
@@ -62,20 +63,20 @@ public class BarterServiceImpl implements BarterService {
     }
 
     private void processBarterCreationEvent(String chainId, Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowBarterCreatedEventResponse eventResponse) {
-        Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndTransactionId(chainId, eventResponse.log.getTransactionHash());
+        Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndTransactionId(chainId, eventResponse.log.getTransactionHash().toLowerCase());
 
         if (optionalBarterEntity.isPresent()) {
             return;
         }
 
         BarterEntity barterEntity = BarterEntity.builder()
-                .transactionId(eventResponse.log.getTransactionHash())
-                .barterContract(eventResponse._barter)
-                .account(eventResponse._createdBy)
+                .transactionId(eventResponse.log.getTransactionHash().toLowerCase())
+                .barterContract(eventResponse._barter.toLowerCase())
+                .account(eventResponse._createdBy.toLowerCase())
                 .chainId(chainId)
                 .deadline(fromUTCTimeStampMins(eventResponse._deadline.longValue()))
-                .depositTokenContract(eventResponse._inToken)
-                .expectedTokenContract(eventResponse._outToken)
+                .depositTokenContract(eventResponse._inToken.toLowerCase())
+                .expectedTokenContract(eventResponse._outToken.toLowerCase())
                 .build();
 
         barterEntity.setDateCreated(LocalDateTime.now());
@@ -190,23 +191,24 @@ public class BarterServiceImpl implements BarterService {
 
     @Override
     public BarterSearchResponseModel getBarters(String chainID, BarterFilterModel filterModel) {
-        PageRequest pageRequest = PageRequest.of(filterModel.getStart(), filterModel.getLimit(), Sort.by(Sort.Order.desc("dateCreated")));
 
-        Page<BarterEntity> barterEntityPage;
+        PageRequest pageRequest = PageRequest.of(filterModel.getPage(), filterModel.getLimit(), Sort.by(Sort.Order.desc("dateCreated")));
+
+        Slice<BarterEntity> barterEntityPage;
 
         if (!Strings.isNullOrEmpty(filterModel.getDepositedTokenAddress()) && !Strings.isNullOrEmpty(filterModel.getExpectsTokenAddress())) {
-            barterEntityPage = barterEntityRepository.findAllByChainIdAndDepositTokenContractAndExpectedTokenContract(chainID, filterModel.getDepositedTokenAddress(), filterModel.getExpectsTokenAddress(), pageRequest);
+            barterEntityPage = barterEntityRepository.findAllByChainIdAndDepositTokenContractAndExpectedTokenContract(chainID, filterModel.getDepositedTokenAddress().toLowerCase(), filterModel.getExpectsTokenAddress().toLowerCase(), pageRequest);
         } else if (!Strings.isNullOrEmpty(filterModel.getDepositedTokenAddress())) {
-            barterEntityPage = barterEntityRepository.findAllByChainIdAndDepositTokenContract(chainID, filterModel.getDepositedTokenAddress(), pageRequest);
+            barterEntityPage = barterEntityRepository.findAllByChainIdAndDepositTokenContract(chainID, filterModel.getDepositedTokenAddress().toLowerCase(), pageRequest);
         } else if (!Strings.isNullOrEmpty(filterModel.getExpectsTokenAddress())) {
-            barterEntityPage = barterEntityRepository.findAllByChainIdAndExpectedTokenContract(chainID, filterModel.getExpectsTokenAddress(), pageRequest);
+            barterEntityPage = barterEntityRepository.findAllByChainIdAndExpectedTokenContract(chainID, filterModel.getExpectsTokenAddress().toLowerCase(), pageRequest);
         } else {
             barterEntityPage = barterEntityRepository.findAllByChainId(chainID, pageRequest);
         }
 
         return BarterSearchResponseModel.builder()
-                .totalCount(barterEntityPage.getTotalElements())
-                .barters(barterEntityPage.map(b -> BarterModel.builder().contractAddress(b.getBarterContract()).build()).toList())
+                .hasMore(barterEntityPage.hasNext())
+                .barters(barterEntityPage.map(b -> BarterModel.builder().address(b.getBarterContract()).build()).toList())
                 .build();
     }
 

@@ -1,6 +1,5 @@
 package com.sycrow.api.service;
 
-import com.sycrow.api.blockchain.Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory;
 import com.sycrow.api.dto.BarterFilterModel;
 import com.sycrow.api.dto.BarterSearchResponseModel;
 
