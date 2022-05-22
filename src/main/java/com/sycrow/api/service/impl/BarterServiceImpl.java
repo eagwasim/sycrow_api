@@ -15,7 +15,6 @@ import com.sycrow.api.service.helpers.PlatformAttributeHelper;
 import io.reactivex.Flowable;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.core.env.Environment;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.Sort;
@@ -110,6 +109,8 @@ public class BarterServiceImpl implements BarterService {
         Optional<String> lbs = platformAttributeHelper.getAttributeValue(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_B_S_.getNameForChain(chainId));
 
         AtomicReference<String> latestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
+        AtomicReference<String> secondLatestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
+
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
@@ -123,8 +124,11 @@ public class BarterServiceImpl implements BarterService {
             StreamSupport.stream(transferEventResponseFlowable.blockingIterable().spliterator(), false)
                     .forEach(((Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowBarterCreatedEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
-                        latestBlockScanned.set(block);
-
+                        // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
+                        if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
+                            secondLatestBlockScanned.set(latestBlockScanned.get());
+                            latestBlockScanned.set(block);
+                        }
                         if (eventResponse._isPrivate == Boolean.FALSE) {
                             this.processBarterCreationEvent(chainId, eventResponse);
                         }
@@ -132,7 +136,8 @@ public class BarterServiceImpl implements BarterService {
         } catch (Throwable e) {
             log.error(e);
         }
-        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_B_S_.getNameForChain(chainId), latestBlockScanned.get());
+        // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
+        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_B_S_.getNameForChain(chainId), secondLatestBlockScanned.get());
     }
 
     @Override
@@ -140,6 +145,8 @@ public class BarterServiceImpl implements BarterService {
         Optional<String> lbs = platformAttributeHelper.getAttributeValue(PlatformAttributeNamesConstant.BARTER_TOKEN_TRADE_L_B_S.getNameForChain(chainId));
 
         AtomicReference<String> latestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
+        AtomicReference<String> secondLatestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
+
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
@@ -153,13 +160,19 @@ public class BarterServiceImpl implements BarterService {
             StreamSupport.stream(eventFlowable.blockingIterable().spliterator(), false)
                     .forEach(((Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowTradeByBarterEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
-                        latestBlockScanned.set(block);
+                        // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
+                        if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
+                            secondLatestBlockScanned.set(latestBlockScanned.get());
+                            latestBlockScanned.set(block);
+                        }
+
                         this.processBarterTradeEvent(chainId, eventResponse);
                     }));
         } catch (Throwable e) {
             log.error(e);
         }
-        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_TRADE_L_B_S.getNameForChain(chainId), latestBlockScanned.get());
+        // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
+        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_TRADE_L_B_S.getNameForChain(chainId), secondLatestBlockScanned.get());
     }
 
     @Override
@@ -167,6 +180,7 @@ public class BarterServiceImpl implements BarterService {
         Optional<String> lbs = platformAttributeHelper.getAttributeValue(PlatformAttributeNamesConstant.BARTER_TOKEN_WITHDRAWAL_L_B_S.getNameForChain(chainId));
 
         AtomicReference<String> latestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
+        AtomicReference<String> secondLatestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
@@ -180,12 +194,17 @@ public class BarterServiceImpl implements BarterService {
             StreamSupport.stream(eventFlowable.blockingIterable().spliterator(), false)
                     .forEach(((Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowWithdrawFromBarterEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
-                        latestBlockScanned.set(block);
+                        // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
+                        if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
+                            secondLatestBlockScanned.set(latestBlockScanned.get());
+                            latestBlockScanned.set(block);
+                        }
                         this.processBarterWithdrawalEvent(chainId, eventResponse);
                     }));
         } catch (Throwable e) {
             log.error(e);
         }
+        // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
         platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_WITHDRAWAL_L_B_S.getNameForChain(chainId), latestBlockScanned.get());
     }
 
@@ -197,13 +216,13 @@ public class BarterServiceImpl implements BarterService {
         Slice<BarterEntity> barterEntityPage;
 
         if (!Strings.isNullOrEmpty(filterModel.getDepositedTokenAddress()) && !Strings.isNullOrEmpty(filterModel.getExpectsTokenAddress())) {
-            barterEntityPage = barterEntityRepository.findAllByChainIdAndDepositTokenContractAndExpectedTokenContract(chainID, filterModel.getDepositedTokenAddress().toLowerCase(), filterModel.getExpectsTokenAddress().toLowerCase(), pageRequest);
+            barterEntityPage = barterEntityRepository.findAllByChainIdAndDepositTokenContractAndExpectedTokenContractAndStatus(chainID, filterModel.getDepositedTokenAddress().toLowerCase(), filterModel.getExpectsTokenAddress().toLowerCase(), EntityStatusConstant.ACTIVE, pageRequest);
         } else if (!Strings.isNullOrEmpty(filterModel.getDepositedTokenAddress())) {
-            barterEntityPage = barterEntityRepository.findAllByChainIdAndDepositTokenContract(chainID, filterModel.getDepositedTokenAddress().toLowerCase(), pageRequest);
+            barterEntityPage = barterEntityRepository.findAllByChainIdAndDepositTokenContractAndStatus(chainID, filterModel.getDepositedTokenAddress().toLowerCase(), EntityStatusConstant.ACTIVE, pageRequest);
         } else if (!Strings.isNullOrEmpty(filterModel.getExpectsTokenAddress())) {
-            barterEntityPage = barterEntityRepository.findAllByChainIdAndExpectedTokenContract(chainID, filterModel.getExpectsTokenAddress().toLowerCase(), pageRequest);
+            barterEntityPage = barterEntityRepository.findAllByChainIdAndExpectedTokenContractAndStatus(chainID, filterModel.getExpectsTokenAddress().toLowerCase(), EntityStatusConstant.ACTIVE, pageRequest);
         } else {
-            barterEntityPage = barterEntityRepository.findAllByChainId(chainID, pageRequest);
+            barterEntityPage = barterEntityRepository.findAllByChainIdAndStatus(chainID, EntityStatusConstant.ACTIVE, pageRequest);
         }
 
         return BarterSearchResponseModel.builder()
