@@ -8,6 +8,8 @@ import javax.validation.constraints.Pattern;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class CreateERC20TokenModel {
     @NotBlank(message = "Pls provide an valid chain id")
     private String chainId;
@@ -15,7 +17,8 @@ public class CreateERC20TokenModel {
     private String name;
     @NotBlank(message = "Pls provide a valid symbol")
     private String symbol;
-    @NotBlank(message = "Pls provide an iconUri")
+    @NotBlank(message = "Pls provide a valid symbol")
+    private String slug;
     private String iconUri;
     @NotBlank(message = "Pls provide a valid contract address")
     private String contract;
@@ -23,4 +26,6 @@ public class CreateERC20TokenModel {
     private Boolean isNative;
     @NotNull
     private Boolean isWrapped;
+    private int priority;
+    private Long cmcId;
 }

@@ -1,7 +1,7 @@
 package com.sycrow.api.service.impl;
 
 import com.google.common.base.Strings;
-import com.sycrow.api.blockchain.Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory;
+import com.sycrow.api.blockchain.SyCrowBarterFactory_sol_SyCrowBarterFactory;
 import com.sycrow.api.constant.EntityStatusConstant;
 import com.sycrow.api.constant.PlatformAttributeNamesConstant;
 import com.sycrow.api.dto.BarterFilterModel;
@@ -41,13 +41,13 @@ import java.util.stream.StreamSupport;
 @Named
 @Log4j2
 public class BarterServiceImpl implements BarterService {
-    private static final String BARTER_CREATION_HASH = EventEncoder.encode(Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SYCROWBARTERCREATED_EVENT);
-    private static final String BARTER_TRADE_HASH = EventEncoder.encode(Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SYCROWTRADEBYBARTER_EVENT);
-    private static final String BARTER_WITHDRAW_HASH = EventEncoder.encode(Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SYCROWWITHDRAWFROMBARTER_EVENT);
+    private static final String BARTER_CREATION_HASH = EventEncoder.encode(SyCrowBarterFactory_sol_SyCrowBarterFactory.CREATION_EVENT);
+    private static final String BARTER_TRADE_HASH = EventEncoder.encode(SyCrowBarterFactory_sol_SyCrowBarterFactory.TRADE_EVENT);
+    private static final String BARTER_WITHDRAW_HASH = EventEncoder.encode(SyCrowBarterFactory_sol_SyCrowBarterFactory.COMPLETION_EVENT);
 
     private static final String ADMIN_PRIVATE_KEY_NAME_ENV_KEY = "network.account.keys.private.name";
     private static final String ADMIN_PRIVATE_KEY_VERSION_ENV_KEY = "network.account.keys.private.version";
-    private static final String BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY = "factories.barter.token.";
+    private static final String BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY = "barter.token.factory.address.";
     private static final String NETWORK_URL_ENV_KEY = "networks.url.";
 
     private final BarterEntityRepository barterEntityRepository;
@@ -61,7 +61,7 @@ public class BarterServiceImpl implements BarterService {
         this.environment = environment;
     }
 
-    private void processBarterCreationEvent(String chainId, Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowBarterCreatedEventResponse eventResponse) {
+    private void processBarterCreationEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.CreationEventResponse eventResponse) {
         Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndTransactionId(chainId, eventResponse.log.getTransactionHash().toLowerCase());
 
         if (optionalBarterEntity.isPresent()) {
@@ -70,12 +70,12 @@ public class BarterServiceImpl implements BarterService {
 
         BarterEntity barterEntity = BarterEntity.builder()
                 .transactionId(eventResponse.log.getTransactionHash().toLowerCase())
-                .barterContract(eventResponse._barter.toLowerCase())
-                .account(eventResponse._createdBy.toLowerCase())
+                .barterContract(eventResponse.barter.toLowerCase())
+                .account(eventResponse.createdBy.toLowerCase())
                 .chainId(chainId)
-                .deadline(fromUTCTimeStampMins(eventResponse._deadline.longValue()))
-                .depositTokenContract(eventResponse._inToken.toLowerCase())
-                .expectedTokenContract(eventResponse._outToken.toLowerCase())
+                .deadline(fromUTCTimeStampMins(eventResponse.deadline.longValue()))
+                .depositTokenContract(eventResponse.inToken.toLowerCase())
+                .expectedTokenContract(eventResponse.outToken.toLowerCase())
                 .build();
 
         barterEntity.setDateCreated(LocalDateTime.now());
@@ -85,14 +85,15 @@ public class BarterServiceImpl implements BarterService {
         barterEntityRepository.save(barterEntity);
     }
 
-    private void processBarterTradeEvent(String chainId, Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowTradeByBarterEventResponse eventResponse) {
-        //Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndBarterContract(chainId, eventResponse._barter);
-        //TODO
+    private void processBarterTradeEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.TradeEventResponse eventResponse) {
+        log.info("New Barter Trade! ----- " + eventResponse.barter + " ---- " + eventResponse.inAmount.toString() + " ---- " + eventResponse.outAmount.toString());
     }
 
-    private void processBarterWithdrawalEvent(String chainId, Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowWithdrawFromBarterEventResponse eventResponse) {
-        Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndBarterContract(chainId, eventResponse._barter);
+    private void processBarterWithdrawalEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.CompletionEventResponse eventResponse) {
+        log.info("New Barter Withdraw! ----- " + eventResponse.barter + " ---- ");
+        Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndBarterContract(chainId, eventResponse.barter);
         if (optionalBarterEntity.isEmpty()) {
+            log.info("BarterWithdraw Not Found: Barter with contract id => " + eventResponse.barter + " not found for withdraw");
             return;
         }
 
@@ -102,10 +103,12 @@ public class BarterServiceImpl implements BarterService {
         barterEntity.setDateModified(LocalDateTime.now());
 
         barterEntityRepository.save(barterEntity);
+        log.info("BarterWithdraw Complete: Barter with contract id => " + eventResponse.barter + " Completed! ");
     }
 
     @Override
     public void processBarterCreationEvents(String chainId) {
+        log.info("BARTER-CREATION-HASH: " + BARTER_CREATION_HASH);
         Optional<String> lbs = platformAttributeHelper.getAttributeValue(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_B_S_.getNameForChain(chainId));
 
         AtomicReference<String> latestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
@@ -114,22 +117,22 @@ public class BarterServiceImpl implements BarterService {
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
-        Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
+        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
 
         EthFilter eventFilter = new EthFilter(defaultBlockParameter, DefaultBlockParameterName.LATEST, contractAddress);
         eventFilter.addSingleTopic(BARTER_CREATION_HASH);
 
         try {
-            Flowable<Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowBarterCreatedEventResponse> transferEventResponseFlowable = factory.syCrowBarterCreatedEventFlowable(eventFilter);
+            Flowable<SyCrowBarterFactory_sol_SyCrowBarterFactory.CreationEventResponse> transferEventResponseFlowable = factory.creationEventFlowable(eventFilter);
             StreamSupport.stream(transferEventResponseFlowable.blockingIterable().spliterator(), false)
-                    .forEach(((Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowBarterCreatedEventResponse eventResponse) -> {
+                    .forEach(((SyCrowBarterFactory_sol_SyCrowBarterFactory.CreationEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
                         // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
                         if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
                             secondLatestBlockScanned.set(latestBlockScanned.get());
                             latestBlockScanned.set(block);
                         }
-                        if (eventResponse._isPrivate == Boolean.FALSE) {
+                        if (eventResponse.isPrivate == Boolean.FALSE) {
                             this.processBarterCreationEvent(chainId, eventResponse);
                         }
                     }));
@@ -150,15 +153,15 @@ public class BarterServiceImpl implements BarterService {
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
-        Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
+        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
 
         EthFilter eventFilter = new EthFilter(defaultBlockParameter, DefaultBlockParameterName.LATEST, contractAddress);
         eventFilter.addSingleTopic(BARTER_TRADE_HASH);
 
         try {
-            Flowable<Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowTradeByBarterEventResponse> eventFlowable = factory.syCrowTradeByBarterEventFlowable(eventFilter);
+            Flowable<SyCrowBarterFactory_sol_SyCrowBarterFactory.TradeEventResponse> eventFlowable = factory.tradeEventFlowable(eventFilter);
             StreamSupport.stream(eventFlowable.blockingIterable().spliterator(), false)
-                    .forEach(((Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowTradeByBarterEventResponse eventResponse) -> {
+                    .forEach(((SyCrowBarterFactory_sol_SyCrowBarterFactory.TradeEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
                         // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
                         if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
@@ -184,15 +187,15 @@ public class BarterServiceImpl implements BarterService {
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
-        Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
+        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
 
         EthFilter eventFilter = new EthFilter(defaultBlockParameter, DefaultBlockParameterName.LATEST, contractAddress);
         eventFilter.addSingleTopic(BARTER_WITHDRAW_HASH);
 
         try {
-            Flowable<Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowWithdrawFromBarterEventResponse> eventFlowable = factory.syCrowWithdrawFromBarterEventFlowable(eventFilter);
+            Flowable<SyCrowBarterFactory_sol_SyCrowBarterFactory.CompletionEventResponse> eventFlowable = factory.completionEventFlowable(eventFilter);
             StreamSupport.stream(eventFlowable.blockingIterable().spliterator(), false)
-                    .forEach(((Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.SyCrowWithdrawFromBarterEventResponse eventResponse) -> {
+                    .forEach(((SyCrowBarterFactory_sol_SyCrowBarterFactory.CompletionEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
                         // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
                         if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
@@ -205,7 +208,7 @@ public class BarterServiceImpl implements BarterService {
             log.error(e);
         }
         // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
-        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_WITHDRAWAL_L_B_S.getNameForChain(chainId), latestBlockScanned.get());
+        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_WITHDRAWAL_L_B_S.getNameForChain(chainId), secondLatestBlockScanned.get());
     }
 
     @Override
@@ -235,7 +238,7 @@ public class BarterServiceImpl implements BarterService {
         return Instant.ofEpochMilli(timeStamp * 1000).atZone(ZoneId.of("UTC")).toLocalDateTime();
     }
 
-    private Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory forChain(String chainId) {
+    private SyCrowBarterFactory_sol_SyCrowBarterFactory forChain(String chainId) {
         String factoryContractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
 
         Web3j web3 = Web3j.build(new HttpService(environment.getProperty(String.format("%s%s", NETWORK_URL_ENV_KEY, chainId))));
@@ -247,6 +250,6 @@ public class BarterServiceImpl implements BarterService {
 
         TransactionManager transactionManager = new RawTransactionManager(web3, credentials, Integer.parseInt(chainId));
 
-        return Contracts_SycrowBarterFactory_sol_SyCrowBarterFactory.load(factoryContractAddress, web3, transactionManager, new DefaultGasProvider());
+        return SyCrowBarterFactory_sol_SyCrowBarterFactory.load(factoryContractAddress, web3, transactionManager, new DefaultGasProvider());
     }
 }

@@ -7,6 +7,8 @@ import javax.validation.constraints.Pattern;
 
 @Data
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class CreateChainModel {
     @NotBlank
     private String chainId;

@@ -2,6 +2,7 @@ indexes:
   - kind: barters
     properties:
       - name: chainId
+      - name: status
       - name: dateCreated
         direction: desc
   - kind: barters
@@ -9,17 +10,42 @@ indexes:
       - name: chainId
       - name: depositTokenContract
       - name: expectedTokenContract
+      - name: status
       - name: dateCreated
         direction: desc
   - kind: barters
     properties:
       - name: chainId
       - name: depositTokenContract
+      - name: status
       - name: dateCreated
         direction: desc
   - kind: barters
     properties:
       - name: chainId
       - name: expectedTokenContract
+      - name: status
       - name: dateCreated
         direction: desc
+  - kind: erc20_tokens
+    properties:
+      - name: chain
+      - name: status
+      - name: isNative
+        direction: desc
+      - name: priority
+        direction: desc
+      - name: symbol
+  - kind: erc20_tokens
+    properties:
+      - name: chain
+      - name: status
+      - name: symbol
+      - name: isNative
+        direction: desc
+      - name: priority
+        direction: desc
+  - kind: erc20_tokens
+    properties:
+      - name: chain
+      - name: contract

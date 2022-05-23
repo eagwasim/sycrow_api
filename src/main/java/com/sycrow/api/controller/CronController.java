@@ -41,4 +41,17 @@ public class CronController {
         }
         return ResponseEntity.ok("completed");
     }
+
+    @GetMapping("/barter/token/events/trade/{chainId}")
+    ResponseEntity<?> processBarterTradeEvents(@PathVariable("chainId") String chainId, @RequestHeader("User-Agent") String userAgent) {
+        if (userAgent == null || !userAgent.equalsIgnoreCase("Google-Cloud-Scheduler")) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("lol");
+        }
+        try {
+            barterService.processBarterTradeEvents(chainId);
+        } catch (Throwable t) {
+            log.error(t);
+        }
+        return ResponseEntity.ok("completed");
+    }
 }

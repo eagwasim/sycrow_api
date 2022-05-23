@@ -17,6 +17,7 @@ import javax.inject.Named;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -36,7 +37,11 @@ public class PlatformAttributeHelper {
     public void saveAttribute(String name, String value) {
         Optional<PlatformAttributeEntity> optionalLastBlockScanned = platformAttributeEntityRepository.findFirstByName(name);
         PlatformAttributeEntity platformAttributeEntity = optionalLastBlockScanned.orElseGet(() -> PlatformAttributeEntity.builder().name(name).build());
+        if (platformAttributeEntity.getDateCreated() == null) {
+            platformAttributeEntity.setDateCreated(LocalDateTime.now());
+        }
         platformAttributeEntity.setValue(value);
+        platformAttributeEntity.setDateModified(LocalDateTime.now());
         platformAttributeEntityRepository.save(platformAttributeEntity);
     }
 

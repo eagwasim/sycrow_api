@@ -6,7 +6,7 @@ import com.sycrow.api.service.ERC20TokenService;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
@@ -42,10 +42,18 @@ public class ERC20TokenController {
     }
 
     @GetMapping("/{chainId}")
-    public ResponseEntity<?> getTokens(@PathVariable("chainId") String chainId) {
+    public ResponseEntity<?> getTokens(@PathVariable("chainId") String chainId, @RequestParam("q") @Nullable String query, @RequestParam("page") int page, @RequestParam("limit") int limit) {
         return ResponseEntity.status(HttpStatus.OK)
                 .body(BaseResponse.builder()
-                        .data(erc20TokenService.getActiveTokens(chainId))
+                        .data(erc20TokenService.getActiveTokens(chainId, query, page, limit))
+                        .build());
+    }
+
+    @GetMapping("/{chainId}/{contract}")
+    public ResponseEntity<?> getTokens(@PathVariable("chainId") String chainId, @PathVariable("contract") String contract) {
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(BaseResponse.builder()
+                        .data(erc20TokenService.getByChainAndContract(chainId, contract))
                         .build());
     }
 }

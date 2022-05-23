@@ -14,8 +14,12 @@ public class ERC20TokenEntity  extends PersistableEntity<Long> {
     @Reference
     private ChainEntity chain;
 
+    private int priority;
+    private Long cmcId;
+
     private String name;
     private String symbol;
+    private String slug;
     private String iconUri;
     private String contract;
 
