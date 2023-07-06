@@ -6,7 +6,6 @@ import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.cloud.secretmanager.v1.AccessSecretVersionResponse;
 import com.google.cloud.secretmanager.v1.SecretManagerServiceClient;
 import com.google.cloud.secretmanager.v1.SecretManagerServiceSettings;
-import com.google.cloud.secretmanager.v1.SecretVersionName;
 import com.sycrow.api.model.PlatformAttributeEntity;
 import com.sycrow.api.repository.PlatformAttributeEntityRepository;
 import lombok.extern.log4j.Log4j2;

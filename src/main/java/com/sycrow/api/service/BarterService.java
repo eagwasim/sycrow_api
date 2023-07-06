@@ -11,5 +11,7 @@ public interface BarterService {
 
     void processBarterWithdrawalEvents(String chainId);
 
+    void processNewBarters(String chainId);
+
     BarterSearchResponseModel getBarters(String chainID, BarterFilterModel filterModel);
 }

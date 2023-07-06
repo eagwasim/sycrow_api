@@ -2,6 +2,7 @@ package com.sycrow.api.service.impl;
 
 import com.google.common.base.Strings;
 import com.sycrow.api.blockchain.SyCrowBarterFactory_sol_SyCrowBarterFactory;
+import com.sycrow.api.blockchain.SyCrowBarter_sol_SyCrowBarter;
 import com.sycrow.api.constant.EntityStatusConstant;
 import com.sycrow.api.constant.PlatformAttributeNamesConstant;
 import com.sycrow.api.dto.BarterFilterModel;
@@ -25,6 +26,7 @@ import org.web3j.protocol.core.DefaultBlockParameter;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.request.EthFilter;
 import org.web3j.protocol.http.HttpService;
+import org.web3j.tuples.generated.Tuple2;
 import org.web3j.tx.RawTransactionManager;
 import org.web3j.tx.TransactionManager;
 import org.web3j.tx.gas.DefaultGasProvider;
@@ -61,7 +63,7 @@ public class BarterServiceImpl implements BarterService {
         this.environment = environment;
     }
 
-    private void processBarterCreationEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.CreationEventResponse eventResponse) {
+    void processBarterCreationEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.CreationEventResponse eventResponse) {
         Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndTransactionId(chainId, eventResponse.log.getTransactionHash().toLowerCase());
 
         if (optionalBarterEntity.isPresent()) {
@@ -85,11 +87,11 @@ public class BarterServiceImpl implements BarterService {
         barterEntityRepository.save(barterEntity);
     }
 
-    private void processBarterTradeEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.TradeEventResponse eventResponse) {
+    void processBarterTradeEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.TradeEventResponse eventResponse) {
         log.info("New Barter Trade! ----- " + eventResponse.barter + " ---- " + eventResponse.inAmount.toString() + " ---- " + eventResponse.outAmount.toString());
     }
 
-    private void processBarterWithdrawalEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.CompletionEventResponse eventResponse) {
+    void processBarterWithdrawalEvent(String chainId, SyCrowBarterFactory_sol_SyCrowBarterFactory.CompletionEventResponse eventResponse) {
         log.info("New Barter Withdraw! ----- " + eventResponse.barter + " ---- ");
         Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndBarterContract(chainId, eventResponse.barter);
         if (optionalBarterEntity.isEmpty()) {
@@ -107,17 +109,69 @@ public class BarterServiceImpl implements BarterService {
     }
 
     @Override
+    public void processNewBarters(String chainId) {
+        Optional<String> lip = platformAttributeHelper.getAttributeValue(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_I_P_.getNameForChain(chainId));
+        BigInteger lastIndexProcessed = lip.map(BigInteger::new).orElseGet(() -> new BigInteger("0"));
+        String accountSecret = getPrivateKey();
+        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId, accountSecret);
+        try {
+            BigInteger totalBarterSize = factory.allBartersLength().send();
+
+            if (lastIndexProcessed.compareTo(totalBarterSize) >= 0) {
+                return;
+            }
+            for (BigInteger index = lastIndexProcessed; index.compareTo(totalBarterSize) < 0; index = index.add(new BigInteger("1"))) {
+                String barterAddress = factory.allBarters(index).send();
+                processBarter(chainId, barterAddress, accountSecret);
+                lastIndexProcessed = index;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_I_P_.getNameForChain(chainId), lastIndexProcessed.toString());
+
+    }
+
+    void processBarter(String chainId, String barterAddress, String secret) throws Exception {
+        Optional<BarterEntity> optionalBarterEntity = barterEntityRepository.findFirstByChainIdAndBarterContract(chainId, barterAddress);
+
+        if (optionalBarterEntity.isPresent()) {
+            return;
+        }
+
+        SyCrowBarter_sol_SyCrowBarter syCrowBarter_sol_syCrowBarter = fromContract(chainId, barterAddress, secret);
+        String owner = syCrowBarter_sol_syCrowBarter.owner().send();
+        BigInteger deadline = syCrowBarter_sol_syCrowBarter.deadline().send();
+        Tuple2<String, String> tokens = syCrowBarter_sol_syCrowBarter.getTokens().send();
+
+        BarterEntity barterEntity = BarterEntity.builder()
+                .transactionId(null)
+                .barterContract(barterAddress)
+                .account(owner.toLowerCase())
+                .chainId(chainId)
+                .deadline(fromUTCTimeStampMins(deadline.longValue()))
+                .depositTokenContract(tokens.component1().toLowerCase())
+                .expectedTokenContract(tokens.component2().toLowerCase())
+                .build();
+
+        barterEntity.setDateCreated(LocalDateTime.now());
+        barterEntity.setDateModified(LocalDateTime.now());
+        barterEntity.setStatus(EntityStatusConstant.ACTIVE);
+
+        barterEntityRepository.save(barterEntity);
+    }
+
+    @Override
+    @Deprecated
     public void processBarterCreationEvents(String chainId) {
-        log.info("BARTER-CREATION-HASH: " + BARTER_CREATION_HASH);
         Optional<String> lbs = platformAttributeHelper.getAttributeValue(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_B_S_.getNameForChain(chainId));
 
         AtomicReference<String> latestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
-        AtomicReference<String> secondLatestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
 
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
-        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
+        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId, getPrivateKey());
 
         EthFilter eventFilter = new EthFilter(defaultBlockParameter, DefaultBlockParameterName.LATEST, contractAddress);
         eventFilter.addSingleTopic(BARTER_CREATION_HASH);
@@ -128,10 +182,8 @@ public class BarterServiceImpl implements BarterService {
                     .forEach(((SyCrowBarterFactory_sol_SyCrowBarterFactory.CreationEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
                         // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
-                        if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
-                            secondLatestBlockScanned.set(latestBlockScanned.get());
-                            latestBlockScanned.set(block);
-                        }
+                        latestBlockScanned.set(block);
+
                         if (eventResponse.isPrivate == Boolean.FALSE) {
                             this.processBarterCreationEvent(chainId, eventResponse);
                         }
@@ -140,7 +192,7 @@ public class BarterServiceImpl implements BarterService {
             log.error(e);
         }
         // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
-        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_B_S_.getNameForChain(chainId), secondLatestBlockScanned.get());
+        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_CREATION_L_B_S_.getNameForChain(chainId), latestBlockScanned.get());
     }
 
     @Override
@@ -148,12 +200,11 @@ public class BarterServiceImpl implements BarterService {
         Optional<String> lbs = platformAttributeHelper.getAttributeValue(PlatformAttributeNamesConstant.BARTER_TOKEN_TRADE_L_B_S.getNameForChain(chainId));
 
         AtomicReference<String> latestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
-        AtomicReference<String> secondLatestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
 
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
-        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
+        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId, getPrivateKey());
 
         EthFilter eventFilter = new EthFilter(defaultBlockParameter, DefaultBlockParameterName.LATEST, contractAddress);
         eventFilter.addSingleTopic(BARTER_TRADE_HASH);
@@ -163,19 +214,20 @@ public class BarterServiceImpl implements BarterService {
             StreamSupport.stream(eventFlowable.blockingIterable().spliterator(), false)
                     .forEach(((SyCrowBarterFactory_sol_SyCrowBarterFactory.TradeEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
-                        // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
-                        if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
-                            secondLatestBlockScanned.set(latestBlockScanned.get());
-                            latestBlockScanned.set(block);
-                        }
-
+                        latestBlockScanned.set(block);
                         this.processBarterTradeEvent(chainId, eventResponse);
                     }));
         } catch (Throwable e) {
             log.error(e);
+        } finally {
+            try {
+                String latestBlock = web3jForChain(chainId).ethBlockNumber().send().getBlockNumber().toString(16);
+                latestBlockScanned.set(latestBlock);
+            } catch (Exception ignore) {
+            }
         }
         // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
-        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_TRADE_L_B_S.getNameForChain(chainId), secondLatestBlockScanned.get());
+        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_TRADE_L_B_S.getNameForChain(chainId), latestBlockScanned.get());
     }
 
     @Override
@@ -183,11 +235,10 @@ public class BarterServiceImpl implements BarterService {
         Optional<String> lbs = platformAttributeHelper.getAttributeValue(PlatformAttributeNamesConstant.BARTER_TOKEN_WITHDRAWAL_L_B_S.getNameForChain(chainId));
 
         AtomicReference<String> latestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
-        AtomicReference<String> secondLatestBlockScanned = lbs.map(AtomicReference::new).orElseGet(() -> new AtomicReference<>(null));
         DefaultBlockParameter defaultBlockParameter = Optional.ofNullable(latestBlockScanned.get()).map(s -> DefaultBlockParameter.valueOf(new BigInteger(s, 16))).orElse(DefaultBlockParameterName.EARLIEST);
 
         String contractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
-        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId);
+        SyCrowBarterFactory_sol_SyCrowBarterFactory factory = this.forChain(chainId, getPrivateKey());
 
         EthFilter eventFilter = new EthFilter(defaultBlockParameter, DefaultBlockParameterName.LATEST, contractAddress);
         eventFilter.addSingleTopic(BARTER_WITHDRAW_HASH);
@@ -197,18 +248,20 @@ public class BarterServiceImpl implements BarterService {
             StreamSupport.stream(eventFlowable.blockingIterable().spliterator(), false)
                     .forEach(((SyCrowBarterFactory_sol_SyCrowBarterFactory.CompletionEventResponse eventResponse) -> {
                         String block = eventResponse.log.getBlockNumber().toString(16);
-                        // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
-                        if (!block.equalsIgnoreCase(latestBlockScanned.get())) {
-                            secondLatestBlockScanned.set(latestBlockScanned.get());
-                            latestBlockScanned.set(block);
-                        }
+                        latestBlockScanned.set(block);
                         this.processBarterWithdrawalEvent(chainId, eventResponse);
                     }));
         } catch (Throwable e) {
             log.error(e);
+        } finally {
+            try {
+                String latestBlock = web3jForChain(chainId).ethBlockNumber().send().getBlockNumber().toString(16);
+                latestBlockScanned.set(latestBlock);
+            } catch (Exception ignore) {
+            }
         }
         // Storing the second-latest block scanned instead of the first to stop the filter not found error from breaking cron
-        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_WITHDRAWAL_L_B_S.getNameForChain(chainId), secondLatestBlockScanned.get());
+        platformAttributeHelper.saveAttribute(PlatformAttributeNamesConstant.BARTER_TOKEN_WITHDRAWAL_L_B_S.getNameForChain(chainId), latestBlockScanned.get());
     }
 
     @Override
@@ -234,22 +287,32 @@ public class BarterServiceImpl implements BarterService {
                 .build();
     }
 
-    private LocalDateTime fromUTCTimeStampMins(Long timeStamp) {
+    LocalDateTime fromUTCTimeStampMins(Long timeStamp) {
         return Instant.ofEpochMilli(timeStamp * 1000).atZone(ZoneId.of("UTC")).toLocalDateTime();
     }
 
-    private SyCrowBarterFactory_sol_SyCrowBarterFactory forChain(String chainId) {
-        String factoryContractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
-
-        Web3j web3 = Web3j.build(new HttpService(environment.getProperty(String.format("%s%s", NETWORK_URL_ENV_KEY, chainId))));
-
+    String getPrivateKey() {
         String secretKeyName = environment.getProperty(ADMIN_PRIVATE_KEY_NAME_ENV_KEY);
         String secretKeyVersion = environment.getProperty(ADMIN_PRIVATE_KEY_VERSION_ENV_KEY);
+        return platformAttributeHelper.getSecretValue(secretKeyName, secretKeyVersion).orElseThrow(() -> new SecretValueNotFoundException(secretKeyName + ":" + secretKeyVersion));
+    }
 
-        Credentials credentials = Credentials.create(platformAttributeHelper.getSecretValue(secretKeyName, secretKeyVersion).orElseThrow(() -> new SecretValueNotFoundException(secretKeyName + ":" + secretKeyVersion)));
+    Web3j web3jForChain(String chainId) {
+        return Web3j.build(new HttpService(environment.getProperty(String.format("%s%s", NETWORK_URL_ENV_KEY, chainId))));
+    }
 
+    SyCrowBarterFactory_sol_SyCrowBarterFactory forChain(String chainId, String secret) {
+        Web3j web3 = web3jForChain(chainId);
+        String factoryContractAddress = environment.getProperty(String.format("%s%s", BARTER_TOKEN_FACTORY_ADDRESS_ENV_KEY, chainId));
+        Credentials credentials = Credentials.create(secret);
         TransactionManager transactionManager = new RawTransactionManager(web3, credentials, Integer.parseInt(chainId));
-
         return SyCrowBarterFactory_sol_SyCrowBarterFactory.load(factoryContractAddress, web3, transactionManager, new DefaultGasProvider());
+    }
+
+    SyCrowBarter_sol_SyCrowBarter fromContract(String chainId, String contract, String secret) {
+        Web3j web3 = web3jForChain(chainId);
+        Credentials credentials = Credentials.create(secret);
+        TransactionManager transactionManager = new RawTransactionManager(web3, credentials, Integer.parseInt(chainId));
+        return SyCrowBarter_sol_SyCrowBarter.load(contract, web3, transactionManager, new DefaultGasProvider());
     }
 }

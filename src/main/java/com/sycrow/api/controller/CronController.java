@@ -22,7 +22,7 @@ public class CronController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("lol");
         }
         try {
-            barterService.processBarterCreationEvents(chainId);
+            barterService.processNewBarters(chainId);
         } catch (Throwable t) {
             log.error(t);
         }

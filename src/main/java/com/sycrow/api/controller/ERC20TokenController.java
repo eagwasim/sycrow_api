@@ -52,6 +52,7 @@ public class ERC20TokenController {
     @GetMapping("/{chainId}/{contract}")
     public ResponseEntity<?> getTokens(@PathVariable("chainId") String chainId, @PathVariable("contract") String contract) {
         return ResponseEntity.status(HttpStatus.OK)
+                .header("cache-control", "max-age=86400")
                 .body(BaseResponse.builder()
                         .data(erc20TokenService.getByChainAndContract(chainId, contract))
                         .build());

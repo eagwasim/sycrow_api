@@ -11,3 +11,9 @@ automatic_scaling:
   min_idle_instances: 0
 env_variables:
   JAVA_USER_OPTS: '-Dspring.profiles.active=prod -Dhttps.protocols=TLSv1,TLSv1.1,TLSv1.2'
+
+handlers:
+  - url: /.*
+    secure: always
+    redirect_http_response_code: 301
+    script: auto
